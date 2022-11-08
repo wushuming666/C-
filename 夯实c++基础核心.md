@@ -1,3 +1,5 @@
+![在这里插入图片描述](https://img-blog.csdnimg.cn/5a55edebde7647848d373f6072e8c2ac.png)
+
 # 第一章 内存模型和编译链接
 
 ![在这里插入图片描述](https://img-blog.csdnimg.cn/0f8334c819a044d79f07c6f2e8fc2124.png)
@@ -235,3 +237,46 @@ PKi
 
 ## 4. const的用法
 
+C里面：const**可以不初始化**。const 修饰的量不是常量，是**常变量**。不能作为左值。`const int a = 10;` 仅仅是语法上的不能被修改（a 这个符号不能被改变，内存可以变）
+
+C++：const 必须初始化，初始值是立即数的叫做**常量**；是一个变量的**可以被看成常变量**。所以可以被用来定义数组的大小。
+
+C中const就是被当作一个变量来编译生成指令的。
+
+C++中，所有出现const变量名字的地方，都被常量的初始化替换了。
+
+```c
+//c语言
+#include <stdio.h>
+
+int main()
+{
+    const int a = 10;
+    int *p = (int *)&a;
+    *p = 20;
+    printf("%d %d %d\n", a, *p, *(&a)); //20 20 20
+    return 0;
+}
+```
+
+同样一份代码，C++ 结果为 `10 20 10`
+
+*(&a) 是被编译器优化了，直接是 a
+
+让C++ 变为 C 的结果方式为将 const 由常量变为常变量。
+
+```cpp
+#include <stdio.h>
+
+int main()
+{
+    int b = 10;
+    const int a = b;
+    int *p = (int *)&a;
+    *p = 20;
+    printf("%d %d %d\n", a, *p, *(&a)); //20 20 20
+    return 0;
+}
+```
+
+可以理解成将所有的 a 变成了 变量 b。
