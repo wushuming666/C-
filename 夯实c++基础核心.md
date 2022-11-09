@@ -259,7 +259,7 @@ int main()
 }
 ```
 
-同样一份代码，C++ 结果为 `10 20 10`
+同样一份代码，C++ 结果为 `10 20 10` 但是**内存被改变了**。
 
 *(&a) 是被编译器优化了，直接是 a
 
@@ -280,3 +280,318 @@ int main()
 ```
 
 可以理解成将所有的 a 变成了 变量 b。
+
+## 5. const和一二级指针的结合应用
+
+### 5.1 const 和一级指针
+
+const 修饰的量常出现的错误：
+
+1. 常量不能再作为左值
+2. 不能把常量的地址泄露给一个普通的指针或者普通的引用变量
+
+C++语言规范：const修饰的是离它最近的类型。
+
+```cpp
+const int *p;  //去掉int, *p被修饰为const *p不能被修改，但是p可以被修改
+int const* p; //和上面的一样
+```
+
+```cpp
+#include <iostream>
+
+using namespace std;
+
+int main()
+{
+	int a = 1, b = 2;
+	const int* p = &a;
+	p = &b;
+	cout << *p;
+	return 0;
+}
+```
+
+------
+
+
+
+```cpp
+int *const p; //被修饰的是int *      const修饰的是p本身
+```
+
+```cpp
+int a = 1, b = 2;
+int* const p = &a;
+p = &b; //error!!!!!
+```
+
+但是*p没有被修饰
+
+```cpp
+int a = 1, b = 2;
+int* const p = &a;
+*p = 3;
+cout << *p; //3
+```
+
+----
+
+
+
+```cpp
+const int *const p; //第一个const修饰*p 第二个const修饰p本身   严格模式
+```
+
+-----
+
+
+
+不想把常量的地址泄露给一个普通指针，用这种方法：
+
+```cpp
+const int a = 10;
+const int *p = &a; //*p不能被修改
+```
+
+-----
+
+const 和指针的类型转换公式：
+
+int* <= const int* **错**
+
+const int* <= int* **对**
+
+
+
+**const 如果右边没有指针 * 的话，不参与类型**
+
+```cpp
+#include <iostream>
+#include <typeinfo>
+
+using namespace std;
+
+int main()
+{
+	int a = 1;
+	int* const p = &a;
+	cout << typeid(p).name() << endl; //int *
+	return 0;
+}
+```
+
+
+
+### 5.2 const 和二级指针
+
+```cpp
+int a = 10;
+int* p = &a;
+const int** q = &p; //error!!!
+
+//*q 是 const int *
+//不能把常量的地址泄露给一个普通的指针 普通指针一解引用，就把常量的值改了
+
+//可以这样
+int a = 10;
+const int* p = &a;
+const int** q = &p;
+//也可以这样
+int a = 10;
+int* p = &a;
+const int*const* q = &p; //锁死*q
+```
+
+```cpp
+const int **q; //**q锁定
+int *const* q; //*q锁定
+int **const q; //q锁定
+```
+
+int** <= const int ** **错误**
+
+const int** <= int ** **错误**
+
+`int ** <= int*const*` **错误** const修饰右边的指针，相当于一级指针的 `int* <= const int*`
+
+`int*const* <= int **` **正确** 相当于一级指针的`const int* <= int*`
+
+ 
+
+## 6.左值引用和初识右值引用
+
+有一种说法是：引用是更安全的指针。
+
+引用和指针的区别？
+
+1. 引用必须初始化的，指针可以不初始化。反汇编：引用和指针的底层一样。
+
+   ```
+   	int* p = &a;
+   00D71FF9  lea         eax,[a]  
+   00D71FFC  mov         dword ptr [p],eax  
+   	int& b = a;
+   00D71FFF  lea         eax,[a]  
+   00D72002  mov         dword ptr [b],eax
+   ```
+
+2. 引用只有一级引用，没有多级引用。指针可以有多级指针。
+
+3. 定义一个引用变量和定义一个指针变量，其汇编指令是一模一样的。都可以修改内存的值。
+
+-------
+
+```cpp
+int array[5];
+int (*p)[5] = &array;
+int(&q)[5] = array;
+cout << sizeof(p) << ' ' << sizeof(q);  //4 20
+```
+
+使用引用变量时会解引用。array 和 q 是一回事儿。
+
+----
+
+**左值**：有内存，有名字，值可以被修改
+
+**右值**：没内存（立即数，放在寄存器里面），没名字
+
+C++11提供了右值引用。
+
+1. `int &&c = 10;` 指令上，可以自动产生临时量然后直接引用临时量
+
+2. 一个右值引用变量本身是一个左值。
+3. 右值引用不能引用左值，左值引用可以引用右值。 
+
+```cpp
+int&& a = 10;
+a = 30;
+const int &b = 20;
+```
+
+这两种方式的指令一样
+
+```
+00391FF2  mov         dword ptr [ebp-18h],14h  
+00391FF9  lea         eax,[ebp-18h]  
+00391FFC  mov         dword ptr [a],eax
+```
+
+
+
+## 7.const、指针、引用的结合使用
+
+```cpp
+int *p1 = (int*)0x0018ff44;
+int*&&p2 = (int *)0x0018ff44;
+int *const &p3 = (int*)0x0018ff44;
+```
+
+&和* 右边的一个`&`将左边的一个 `*` 变为`&`
+
+```cpp
+int a = 10;
+int *p = &a;
+int **q = &p; //等于 int*&q = p;
+```
+
+---
+
+```cpp
+int a = 10;
+int* const p = &a;
+int *& q = p; //error 把常量地址泄露给普通指针   int *const& q = p;
+```
+
+
+
+## 8.new 和 delete
+
+1. malloc 和 free，称作 C 的库函数；new 和 delete，称作运算符
+
+2. new 不仅可以做内存开辟，还可以做内存初始化操作
+
+3. malloc开辟内存失败，是通过返回值和nullptr作比较；new开辟内存失败，是通过抛出bad_alloc类型的异常来判断的。
+
+```cpp
+try
+{
+    int* p = new int(20);
+    cout << *p;
+    delete p;
+}
+catch (const bad_alloc &e)
+{
+
+}
+```
+
+```cpp
+int* q1 = new int[20](); //new int[20] 不初始化
+for (int i = 0; i < 20; i++) cout << q1[i] << ' ';
+delete []q1;
+```
+
+**new有多少种？**
+
+```cpp
+int *p1 = new int(20);
+int *p2 = new (nothrow) int; //不抛出异常版
+const int *p3 = new const int(40);
+//定位new 在指定的内存上new
+int data = 0;
+int *p4 = new (&data) int(50); 
+cout << data; //50
+```
+
+
+
+# 第三章 类和对象
+
+
+
+
+
+
+
+## 1. 类和对象、this指针
+
+
+
+
+
+## 2. 构造函数和构析函数
+
+
+
+
+
+## 3. 对象的深拷贝和浅拷贝
+
+
+
+
+
+## 4. 代码应用实践
+
+
+
+
+
+## 5. 构造函数的初始化列表
+
+
+
+
+
+## 6. 类的各类成员方法以及区别
+
+
+
+
+
+## 7.指向类成员的指针
+
+
+
