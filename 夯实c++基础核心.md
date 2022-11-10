@@ -549,33 +549,333 @@ cout << data; //50
 
 # 第三章 类和对象
 
-
-
-
-
-
+基础部分告一段落，开始 oop 部分
 
 ## 1. 类和对象、this指针
 
+类：实体的抽象类型
 
+实体（属性、行为）   ->    ADT(abstract data type) （抽象数据类型）
+
+对象  <-（实例化）类（属性：成员变量；行为：成员方法）
+
+> **oop 语言的四大特征是什么？**
+>
+> 抽象 封装/隐藏 继承 多态
+
+```cpp
+#include <iostream>
+
+using namespace std;
+
+const int NAME_LEN = 20;
+class CGoods //类名最好用C开始 
+{
+	//类的成员方法一经编译,所有的方法参数都会加一个this指针,接收该方法的对象的地址
+public: //给外部提供共有的方法来访问私有的属性
+	void init(const char* name, double price, int amount); //商品数据初始化
+	void show(); //打印商品信息
+	//给成员变量提供一组getxxx或setxxx的方法
+	void setName(const char* name) { strcpy(_name, name); } //类体内实现的方法,自动处理成inline内联函数
+	const char* getName() { return _name; }//防止解引用修改
+private: //属性一般都是私有的
+	//总共40个字节
+	char _name[NAME_LEN]; //按最长的8对齐  20 + 4
+	double _price; //8
+	int _amount; //4 + 4
+};
+
+void CGoods::init(const char* name, double price, int amount)
+{
+	strcpy(_name, name);
+	_price = price;
+	_amount = amount;
+}
+
+void CGoods::show()
+{
+	cout << _name << endl;
+	cout << _price << endl;
+	cout << _amount << endl;
+}
+
+int main()
+{
+	//对象的内存大小只和成员变量有关
+	CGoods good;
+	good.init("面包", 10.5, 200);
+	good.setName("小面包");
+	good.show();
+	return 0;
+}
+```
 
 
 
 ## 2. 构造函数和构析函数
 
+自动 init 和 release
 
+先构造的后析构。
+
+析构函数不带参数，所以析构函数只能有一个；构造函数可以提供多个，叫做**重载**。
+
+堆上的对象要手动析构
+
+```cpp
+#include <iostream>
+
+using namespace std;
+class CTest
+{
+public:
+	CTest()
+	{
+		cout << this << "构造" << endl;
+	}
+	~CTest()
+	{
+		cout << this << "析构" << endl;
+	}
+};
+
+int main()
+{
+	CTest t1;
+	CTest* t2 = new CTest();
+	return 0;
+}
+//006FF833构造
+//00A7EFA8构造
+//006FF833析构
+```
 
 
 
 ## 3. 对象的深拷贝和浅拷贝
 
+有**指针**指向对象的**外部资源**时，**浅拷贝**的析构会出问题：先构造的指针变成了野指针。
 
+`CTest t3 = t1;` 默认拷贝构造函数，浅拷贝
+
+拷贝时扩容用 for 循环， 不用 memcpy 原因：避免指向外部的指针指向同一块
+
+```cpp
+#include <iostream>
+
+using namespace std;
+class CTest
+{
+public:
+	CTest(int size)
+	{
+		this->_size = size;
+		_p = new int[size];
+		cout << this << "构造" << endl;
+	}
+	//自定义拷贝构造函数，对象的浅拷贝有问题了
+	CTest(const CTest& t)
+	{
+		_p = new int[t._size];
+		for (int i = 0; i < t._size; i++) { //扩容用for循环，不用memcpy 原因：仍然是指针
+			_p[i] = t._p[i];
+		}
+		cout << this << "深拷贝" << endl;
+	}
+	~CTest()
+	{
+		delete[] _p;
+		_p = nullptr;
+		cout << this << "析构" << endl;
+	}
+private:
+	int _size;
+	int* _p;
+};
+
+int main()
+{
+	CTest t1(10);
+	CTest t3 = t1;
+	return 0;
+}
+```
 
 
 
 ## 4. 代码应用实践
 
+```cpp
+//string
+#include <iostream>
 
+using namespace std;
+
+class String
+{
+public:
+	//普通构造
+	String(const char* str = nullptr)
+	{
+		cout << this << ' ' << "const char*构造" << endl;
+		if (str != nullptr)
+		{
+			m_data = new char[strlen(str) + 1];
+			strcpy(this->m_data, str);
+		}
+		else 
+		{
+			m_data = new char[1];
+			*m_data = '\0'; //保证底层有内存
+		}
+	}
+	//拷贝构造
+	String(const String& other)
+	{
+		cout << this << "拷贝构造" << endl;
+		m_data = new char[strlen(other.m_data) + 1];
+		strcpy(m_data, other.m_data);
+	}
+	//构析
+	~String(void)
+	{
+		delete[]m_data;
+		m_data = nullptr;
+	}
+	//赋值函数
+	String& operator = (const String & other) //返回值产生临时变量,返回引用开销小
+	{
+		if (this == &other)
+		{
+			return *this; //赋完值把当前对象返回回去
+		}
+		cout << this << "赋值重载" << endl;
+		delete[]m_data;
+		m_data = new char[strlen(other.m_data) + 1];
+		strcpy(m_data, other.m_data);
+		return *this;
+	}
+private:
+	//保存字符串
+	char* m_data;
+};
+int main()
+{
+	//带const char*的构造
+	String str1;
+	String str2("hello");
+	String str3 = "world";
+
+	//拷贝构造
+	String str4 = str3;
+	String str5(str3);
+
+	//赋值重载
+	str1 = str2;
+
+	return 0;
+}
+```
+
+```cpp
+//循环队列
+#include <iostream>
+
+using namespace std;
+
+class Queue
+{
+public:
+	Queue(int size = 20)
+	{
+		_pQue = new int[size];
+		_front = _rear = 0;
+		_size = size;
+	}
+	//手写深拷贝
+	Queue(const Queue& src)
+	{
+		_size = src._size;
+		_front = src._front;
+		_rear = src._rear;
+		_pQue = new int[_size];
+		for (int i = _front; i != _rear; i = (i + 1) % _size)
+		{
+			_pQue[i] = src._pQue[i];
+		}
+	}
+	~Queue()
+	{
+		delete[]_pQue;
+		_pQue = nullptr;
+	}
+	void push(int val)
+	{
+		if (full())
+			resize();
+		_pQue[_rear] = val;
+		_rear = (_rear + 1) % _size;
+	}
+	void pop()
+	{
+		if (empty())
+			return;
+		_front = (_front + 1) % _size;
+	}
+	int front() //获取队头元素
+	{
+		return _pQue[_front];
+	}
+	bool full()
+	{
+		return (_rear + 1) % _size == _front;
+	}
+	bool empty()
+	{
+		return _front == _rear;
+	}
+	void resize()
+	{
+		int index = 0;
+		int* ptmp = new int[2 * _size];
+		for (int i = _front; i != _rear; i = (i + 1) % _size)
+		{
+			ptmp[index++] = _pQue[i];
+		}
+		delete[]_pQue;
+		_pQue = ptmp;
+		_front = 0;
+		_rear = index;
+		_size *= 2;
+	}
+private:
+	int* _pQue; //申请队列的数组空间
+	int _front; //指示队头的位置
+	int _rear; //指示队尾的位置
+	int _size; //队列扩容的总大小
+};
+
+int main()
+{
+	Queue queue;
+	for (int i = 0; i < 30; i++)
+	{
+		queue.push(rand() % 100);
+	}
+	while (!queue.empty())
+	{
+		cout << queue.front() << ' ';
+		queue.pop();
+	}
+	cout << endl;
+
+	Queue q2 = queue;
+
+	return 0;
+}
+```
+
+**有指针指向类外资源时深拷贝**
 
 
 
