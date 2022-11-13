@@ -1934,29 +1934,301 @@ delete[]a;
 
 ## 7. new和delete重载实现的对象池应用
 
+运算符重载：成员方法、全局方法
 
+内存池 进程池 线程池 对象池
+
+解决短时间内频繁调用同一区域的 malloc free
+
+```cpp
+#include <iostream>
+//#include <string>
+
+using namespace std;
+
+template<typename T>
+class Queue
+{
+public:
+	Queue()
+	{
+		_front = _rear = new QueueItem();
+	}
+	~Queue()
+	{
+		QueueItem* cur = _front;
+		while (cur != nullptr)
+		{
+			_front = _front->_next;
+			delete cur;
+			cur = _front;
+		}
+	}
+	void push(const T& val)
+	{
+		QueueItem *item = new QueueItem(val);
+		_rear->_next = item;
+		_rear = item;
+	}
+	void pop()
+	{
+		if (empty())
+			return;
+		QueueItem* first = _front->_next;
+		_front->_next = first->_next;
+		if (_front->_next == nullptr)
+		{
+			_rear = _front;
+		}
+		delete first;
+	}
+	T front() const
+	{
+		return _front->_next->_data;
+	}
+	bool empty() const { return _front == _rear; }
+private:
+	struct QueueItem //节点
+	{
+		QueueItem(T data = T()):_data(data), _next(nullptr){}
+		//给QueueItem提供自定义内存管理
+		void* operator new(size_t size)
+		{
+			if (_itemPool == nullptr) //用满了itemPool就是nullptr了
+			{
+				_itemPool = (QueueItem*)new char[POOL_ITEM_SIZE * sizeof(QueueItem)];
+				QueueItem* p = _itemPool;
+				for (; p < _itemPool + POOL_ITEM_SIZE - 1; ++p) //最后一个是nullptr
+				{
+					p->_next = p + 1;
+				}
+				p->_next = nullptr;
+			}
+
+			QueueItem* p = _itemPool;
+			_itemPool = _itemPool->_next;
+			return p;
+		}
+		void operator delete(void* ptr)
+		{
+			QueueItem* p = (QueueItem*)ptr;
+			p->_next = _itemPool;
+			_itemPool = p;
+		}
+		T _data;
+		QueueItem* _next;
+		static QueueItem* _itemPool; 
+		static const int POOL_ITEM_SIZE = 1000000;
+	};
+
+	QueueItem* _front; //头
+	QueueItem* _rear; //尾
+};
+
+template<typename T>
+typename Queue<T>::QueueItem *Queue<T>::QueueItem::_itemPool = nullptr;
+
+int main()
+{
+	Queue<int> que;
+	for (int i = 0; i < 10000000; ++i)
+	{
+		que.push(i);
+		que.pop();
+	}
+	cout << que.empty() << endl;
+	return 0;
+}
+```
 
 
 
 # 第六章 继承与多态
 
-
-
 ## 1. 继承的基本意义
 
+继承的本质：a. 代码的复用 b. 
 
+类和类之间的关系：
+
+组合：a part of ...一部分的关系
+
+继承：a kind of ...一种的关系
+
+1. 基类的成员的访问限定，在派生类里面是不可能超过继承方式的
+
+2. protected 在派生（public、protected）类里可以被访问
+
+3. private只有自己和友元可以访问
+4. 外部只能访问 public 
+
+![image-20221113161322108](C:\Users\lemer\AppData\Roaming\Typora\typora-user-images\image-20221113161322108.png)
+
+继承来源于自己的上一级
 
 
 
 ## 2. 派生类的构造过程
 
+派生类的构造函数不能派生类自己去初始化它。
 
+派生类从基类可以从基类继承来所有的成员（变量和方法），除构造函数和析构函数（这两个继承了也没有意义）
+
+
+
+派生类怎么初始化从基类继承来的成员变量呢？
+
+答：通过调用基类相应的构造函数来初始化
+
+
+
+派生类对象构造和析构的过程是：
+
+1. 派生类调用基类的构造函数，初始化从基类继承来的成员
+2. 调用派生类自己的构造函数
+3. 调用派生类的构析
+4. 调用基类的构析
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+public:
+	Base(int data)
+	{
+		y = data;
+		cout << "Base()" << endl;
+	}
+	~Base()
+	{
+		cout << "~Base()" << endl;
+	}
+	int y;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data) :
+		Base(data), x(data)
+	{
+		cout << "Device()" << endl;
+	}
+	~Derive()
+	{
+		cout << "~Device()" << endl;
+	}
+	void show()
+	{
+		cout << "xy " << x << " " << y << endl;
+	}
+private:
+	int x;
+};
+
+int main()
+{
+	Derive x(1);
+	x.show();
+	return 0;
+}
+
+/*
+Base()
+Device()
+xy 1 1
+~Device()
+~Base()
+*/
+```
 
 
 
 ## 3. 重载、隐藏、覆盖
 
+子类可以调用基类的函数，但是一旦子类自定义同名函数，父类的该函数名不能被用。
 
+
+
+**1.重载关系**
+
+一组函数要重载，必须处在**同一个作用域**当中；并且函数名字相同，参数列表不同
+
+**2.隐藏（作用域隐藏）关系**
+
+在继承结构当中，派生类的同名成员，把基类的同名成员给隐藏调用了
+
+**3.覆盖关系**
+
+涉及虚函数
+
+
+
+基类对象 -> 派生类对象 N
+
+派生类对象 -> 基类对象 Y
+
+基类指针（引用） -> 派生类对象 N
+
+派生类指针（引用） -> 基类对象 Y
+
+
+
+**在继承结构中进行上下的类型转换，默认只支持从下到上的转换**
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+public:
+	Base(int data = 10) : ma(data) {}
+	void show() { cout << "Base::show()" << endl; }
+	void show(int) { cout << "Base::show(int)" << endl; }
+protected:
+	int ma;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data = 20):Base(data), mb(data){}
+	void show() { cout << "Derive::show()" << endl; }
+private:
+	int mb;
+};
+
+int main()
+{
+	Base b;
+	Derive d;
+	//d.show();
+	//d.show(10); //error
+	//d.Base::show();
+	
+	//基类 <- 派生 类型从下到上 Y
+	//b = d;
+	//派生 <- 基类 类型从上到下 N
+	//d = b;
+
+	//基类指针(引用) <- 派生类对象 类型从下到上 Y
+	Base* pb = &d; //指针的类型的基类,限制了指针访问的内容只是派生类里面基类的内容
+	pb->show();
+	//((Derive*)pb)->show();  //非常危险 涉及内存的非法访问
+	pb->show(10); 
+
+	//派生类指针（引用）<- 基类对象 类型从上到下 N
+	//指针解引用后非法内存越界访问
+	//Derive* pd = &b; //error
+
+	return 0;
+}
+```
 
 
 
