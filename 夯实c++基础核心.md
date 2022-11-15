@@ -1,5 +1,3 @@
-![在这里插入图片描述](https://img-blog.csdnimg.cn/5a55edebde7647848d373f6072e8c2ac.png)
-
 # 第一章 内存模型和编译链接
 
 ![在这里插入图片描述](https://img-blog.csdnimg.cn/0f8334c819a044d79f07c6f2e8fc2124.png)
@@ -2163,7 +2161,7 @@ xy 1 1
 
 **3.覆盖关系**
 
-涉及虚函数
+基类和派生类的方法，返回值、函数名以及参数列表都相同，而且基类的方法是虚函数，那么派生类的方法就自动处理成虚函数，它们之间成为覆盖关系。
 
 
 
@@ -2234,119 +2232,1241 @@ int main()
 
 ## 4. 虚函数、静态绑定和动态绑定
 
+**静态绑定**
 
+```cpp
+#include<iostream>
+#include <typeinfo>
+
+using namespace std;
+
+class Base
+{
+public:
+	Base(int data = 10) : ma(data) {}
+	void show() { cout << "Base::show()" << endl; }
+	void show(int) { cout << "Base::show(int)" << endl; }
+protected:
+	int ma;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data = 20):Base(data), mb(data){} //给基类继承来的初始化下
+	void show() { cout << "Derive::show()" << endl; }
+	void getma() { cout << "ma " << ma << endl; }
+private:
+	int mb;
+};
+
+int main()
+{
+	Derive d(50);
+	Base* pb = &d;
+	pb->show(); //静态(编译时期)的绑定(函数的调用) call Base::show(010112DAh)
+	pb->show(10); //静态绑定 call Base::show (010112B2h)
+	
+	cout << sizeof(Base) << endl << sizeof(Derive) << endl; 
+	cout << typeid(pb).name() << endl;
+	cout << typeid(*pb).name() << endl;
+
+	return 0;
+}
+
+/*
+Base::show()
+Base::show(int)
+4
+8
+class Base *
+class Base
+*/
+```
+
+**动态绑定(虚函数)**
+
+```cpp
+#include<iostream>
+#include <typeinfo>
+
+using namespace std;
+/*
+一个类添加了虚函数,对这个类有什么影响?
+总结一
+一个类里面定义了虚函数,那么编译阶段,编译器给这个类类型产生
+一个唯一的vftable虚函数表,虚函数表中主要存储的内容就是RTTI指针和虚函数的地址
+当程序运行时,每一张虚函数表都会加载到.rodata区(只读 不能写)
+
+总结二
+一个类里面定义了虚函数,那么这个类定义的对象,其运行时,内存中开始部分,
+多存储一个vfptr虚函数指针,指向相应类型的虚函数表vftable。
+一个类型定义的n个对象，它们的额外vfptr指向的都是同一张虚函数表
+
+总结三
+一个类里面虚函数的个数，不影响对象内存的大小（vfptr），影响的是虚函数表的大小
+*/
+#if 1
+class Base
+{
+public:
+	Base(int data = 10) : ma(data) {}
+	virtual void show() { cout << "Base::show()" << endl; }
+	virtual void show(int) { cout << "Base::show(int)" << endl; }
+protected:
+	int ma;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data = 20):Base(data), mb(data){} //给基类继承来的初始化下
+	/*
+	总结四
+	如果派生类中的方法，和基类继承来的某个方法，
+	返回值、函数名、参数列表都相同，
+	而且基类的方法是virtual虚函数，
+	那么这个派生类的这个方法，自动处理为虚函数
+	重写《=》覆盖
+	*/
+	void show() { cout << "Derive::show()" << endl; }
+private:
+	int mb;
+};
+
+int main()
+{
+	Derive d(50);
+	Base* pb = &d; //vfptr指针 + ma ,8个字节
+
+	/*
+	如果发现show()是普通函数，就静态绑定
+	如果发现show()是虚函数，就进行动态绑定
+	*/
+	/*
+	006A294F  mov         ecx,dword ptr [pb]     vfptr
+	006A2952  mov         eax,dword ptr [edx+4]  虚函数表
+	006A2955  call        eax
+	*/
+	//需要在编译时确定调用哪个函数
+	pb->show(); //动态的绑定
+	pb->show(10); //动态绑定 虽然没重写
+	
+	cout << sizeof(Base) << endl << sizeof(Derive) << endl;
+	cout << typeid(pb).name() << endl;
+	//Base有虚函数,*pb实现的是运行时期的类型
+	cout << typeid(*pb).name() << endl; 
+
+	return 0;
+}
+
+#endif
+```
 
 
 
 ## 5. 虚构析函数
 
+**哪些函数不能实现成虚函数？**
 
+1. 构造函数不能用 virtual
+2. 构造函数中调用的任何函数都是静态绑定，不会发生动态绑定
+3. static 静态，因为static 不依赖对象
+
+
+
+**虚函数依赖：**
+
+1. 虚函数能产生地址，存储在vftable当中
+2. 对象必须存在（vfptr -> vftable -> 虚函数地址）
+
+
+
+**虚析构函数**
+
+析构函数可以成为虚函数。因为析构函数调用时对象存在。
+
+基类的指针指向堆上 new 出来的派生类对象时，它调用析构函数的时候必须发生动态绑定，否则会导致派生类的析构无法调用。
+
+```cpp
+#include <iostream>
+#include <typeinfo>
+
+using namespace std;
+class Base
+{
+public:
+	Base(int data)
+	{
+		ma = data;
+		cout << "Base()" << endl;
+	}
+	~Base()
+	{
+		cout << "~Base()" << endl;
+	}
+	virtual void show() 
+	{
+		cout << "Base::show()" << endl;
+	}
+private:
+	int ma;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data) :
+		Base(data), mb(data)
+	{
+		cout << "Device()" << endl;
+	}
+	~Derive()
+	{
+		cout << "~Device()" << endl;
+	}
+	void show()
+	{
+		cout << "Derive::show()" << endl;
+	}
+private:
+	int mb;
+};
+
+int main()
+{
+	Base* pb = new Derive(10);
+	pb->show(); //派生类的析构函数没有被调用
+
+	delete pb;
+	return 0;
+}
+/*
+Base()
+Device()
+Derive::show()
+~Base()
+*/
+```
+
+pb 的类型是 Base，析构函数是普通函数，静态绑定。
+
+解决方案：将基类的析构函数变为虚函数。
+
+```cpp
+virtual ~Base()
+{
+    cout << "~Base()" << endl;
+}
+```
+
+再跑一遍，结果为
+
+```cpp
+Base()
+Device()
+Derive::show()
+~Device()
+~Base()
+```
 
 
 
 ## 6. 再谈动态绑定
 
+是不是虚函数的调用一定就是动态绑定？ 不是
 
+1. 在类的构造函数中，调用虚函数，也是静态绑定（构造函数中不会发生动态）
+2. 如果不是通过指针或引用变量来调用虚函数，那就是静态绑定
+
+
+
+```cpp
+#include <iostream>
+#include <typeinfo>
+
+using namespace std;
+class Base
+{
+public:
+	Base(int data = 10)
+	{
+		ma = data;
+		cout << "Base()" << endl;
+	}
+	virtual ~Base()
+	{
+		cout << "~Base()" << endl;
+	}
+	virtual void show() 
+	{
+		cout << "Base::show()" << endl;
+	}
+private:
+	int ma;
+};
+
+class Derive : public Base
+{
+public:
+	Derive(int data = 10) :
+		Base(data), mb(data)
+	{
+		cout << "Device()" << endl;
+	}
+	~Derive()
+	{
+		cout << "~Device()" << endl;
+	}
+	void show()
+	{
+		cout << "Derive::show()" << endl;
+	}
+private:
+	int mb;
+};
+
+int main()
+{
+	Base b;
+	Derive d;
+
+	//不涉及前四个字节的指针
+	//静态绑定 用对象本身调用虚函数，是静态绑定
+	b.show(); //虚函数  call Base::show (06B1451h)
+	d.show(); //虚函数
+
+	//move move call 动态绑定（必须由指针调用虚函数）
+	Base* pb1 = &b;
+	pb1->show();
+	Base* pb2 = &d;
+	pb2->show();
+
+	//仍然是动态绑定
+	Base& rb1 = b;
+	rb1.show();
+	Base& rb2 = d;
+	rb2.show();
+
+	//仍然是动态绑定
+	Derive* pd1 = &d;
+	pd1->show();
+	Derive& rd1 = d;
+	rd1.show();
+
+	//流氓强转类型
+	Derive* pd2 = (Derive*)&b; //只能访问基类的表
+	pd2->show(); //b的里面只有Base的函数
+
+	return 0;
+}
+```
 
 
 
 ## 7. 理解多态到底是什么
 
+静态（编译时期）的多态：函数重载、模板（函数模板和类模板）
 
+动态（运行时期）的多态：在继承结构中，基类指针（引用）指向派生类对象，通过该指针（引用）调用同名覆盖 方法（**虚函数**）。**基类指针**指向哪个派生类对象，就会调用哪个派生类对象的同名覆盖方法，称为多态。
+
+多态底层是通过动态绑定来实现的。pbase 访问谁的 vfptr 就继续访问谁的 vftable，当然调用的是对应的派生类对象的方法了。
+
+软件设计“开-闭”原则：对修改关闭，对拓展开放
+
+
+
+继承的好处
+
+1. 代码的复用
+2. 在基类中提供统一的虚函数接口，让派生类进行重写，然后就可以使用多态了
+
+```cpp
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+class Animal
+{
+public:
+	Animal(string name):_name(name){}
+	virtual void bark(){}
+protected:
+	string _name;
+};
+
+class Cat : public Animal
+{
+public:
+	Cat(string name):Animal(name){}
+	void bark() {
+		cout << "miao" << endl;
+	}
+};
+
+class Dog : public Animal
+{
+public:
+	Dog(string name) :Animal(name) {}
+	void bark() { cout << "wang" << endl; }
+};
+
+void bark(Animal* p)
+{
+	p->bark(); //虚函数 动态绑定
+}
+
+int main()
+{
+	Cat cat("加菲");
+	Dog dog("二哈");
+
+	bark(&cat);
+	bark(&dog);
+	return 0;
+}
+```
 
 
 
 ## 8. 理解抽象类
 
+拥有纯虚函数的类叫做抽象类
+抽象类不能再实例化对象了，但是可以定义指针和引用变量 
 
+```cpp
+/*
+1. 让所有的动物实体类通过继承Animal直接复用该属性
+2. 给所有的派生类保留统一的覆盖/重写接口
+*/
+class Animal
+{
+public:
+	Animal(string name):_name(name){}
+	virtual void bark() = 0; //纯虚函数
+protected:
+	string _name;
+};
+```
 
 
 
 ## 9. 笔试实战
 
+**第一题**
+
+前四个字节是 vfptr ，指向的是当前对象的 vftable
+
+
+
+**第二题**
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+public:
+	virtual void show (int i = 10)
+	{
+		cout << "Base::show i:" << i << endl;
+	}
+};
+
+class Derive : public Base
+{
+public:
+	void show(int i = 20)
+	{
+		cout << "Derive::show i:" << i << endl;
+	}
+};
+
+int main()
+{
+	Base* p = new Derive();
+	p->show();
+	delete p;
+	return 0;
+}
+/*
+Derive::show i:10
+*/
+```
+
+这个输出我第一次看到感到难以理解。**为什么**调用`show()`函数输出的是派生类，而输出的 i 是 10 ？
+
+参数是编译时期压栈
+
+```cpp
+008B2923  push        0Ah   =>  函数调用,参数压栈是在编译时期就确定好的
+008B2925  mov         eax,dword ptr [p]  
+008B2928  mov         edx,dword ptr [eax]  
+008B292A  mov         ecx,dword ptr [p]  
+008B292D  mov         eax,dword ptr [edx]  
+008B292F  call        eax  
+```
+
+**派生类的构造函数的默认值没有用**
+
+
+
+**第三题**
+
+派生类的构造函数为 private
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+public:
+	virtual void show ()
+	{
+		cout << "Base::show" << endl;
+	}
+};
+
+class Derive : public Base
+{
+private:
+	void show()
+	{
+		cout << "Derive::show" << endl;
+	}
+};
+
+int main()
+{
+	Base* p = new Derive();
+	p->show(); 
+	delete p;
+	return 0;
+}
+```
+
+正常调用
+
+最终能调用带Derive::show()，是在**运行时期**才确定的。
+
+成员方法能不能调用，就是说方法的访问权限是不是public的，是在**编译阶段**就需要确定好的
+
+如果把基类的构造函数标为private将编译出错
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+private:
+	virtual void show ()
+	{
+		cout << "Base::show" << endl;
+	}
+};
+
+class Derive : public Base
+{
+public:
+	void show()
+	{
+		cout << "Derive::show" << endl;
+	}
+};
+
+int main()
+{
+	Base* p = new Derive();
+	p->show();  //error C2248: “Base::show”: 无法访问 private 成员(在“Base”类中声明)
+	delete p;
+	return 0;
+}
+```
+
+
+
+**第四题**
+
+构造函数的左大括号写入的虚指针
+
+```cpp
+#include<iostream>
+
+using namespace std;
+
+class Base
+{
+public:
+	Base()
+	{
+		/*
+		push ebp  压栈
+		mov ebp, esp
+		sub esp, 4Ch
+		rep stos esp <-> ebp 0xCCCCCCCC(windows vs)
+		vfptr <- &Base::vftable
+		*/
+		cout << "Base()" << endl;
+		clear();
+	}
+	//~Base()
+	//{
+	//	cout << "~Base()";
+	//}
+	void clear()
+	{
+		memset(this, 0, sizeof(*this));
+	}
+	virtual void show ()
+	{
+		cout << "Base::show" << endl;
+	}
+};
+
+class Derive : public Base
+{
+public :
+	Derive()
+	{
+		/*
+		vfptr <- &Derive::vftable
+		*/
+		cout << "Derive()" << endl;
+	}
+	//~Derive()
+	//{
+	//	cout << "~Derive()" << endl;
+	//}
+	void show()
+	{
+		cout << "Derive::show" << endl;
+	}
+};
+
+int main()
+{
+	/*
+	第一种情况虚函数指针为空,动态绑定时程序崩溃
+	*/
+	//Base* pb1 = new Base(); //error
+	//pb1->show(); //动态绑定
+	//delete pb1;
+
+	/*
+	vfptr里面存储的是vftable的地址
+	vfptr <- vftable 要有这个指令写入指针
+	*/
+	Base* pb2 = new Derive();
+	pb2->show();
+	delete pb2;
+	return 0;
+}
+```
+
 
 
 # 第七章 多重继承的那些坑
+
+多重继承：代码的复用  一个派生类有多个基类
+
+```cpp
+class C: public A, public B
+{
+};
+```
 
 
 
 ## 1. 理解虚基类和虚继承
 
+抽象类：有纯虚函数的类
 
+虚基类：被虚继承的类，称作虚基类
+
+virtual：
+
+1. 修饰成员方法是虚函数
+2. 可以修饰继承方式，是虚继承。被虚继承的类，称作虚基类
+
+当一个类有虚函数，这个类生成 vfptr ，指向 vftable
+
+vbptr 指向 vbtable，派生类虚继承而来
+
+```cpp
+#include <iostream>
+
+using namespace std;
+class A
+{
+public:
+private:
+	int ma;
+};
+
+class B : virtual public A
+{
+public:
+private:
+	int mb;
+};
+
+class C
+{
+	virtual void fun(){}
+};
+
+class D : virtual public C
+{
+
+};
+
+int main()
+{
+	A a;
+	B b;
+	C c;
+	D d;
+	cout << sizeof(a) << endl;
+	cout << sizeof(b) << endl; //12 有虚继承时：基类的数据要被搬到最后面
+	cout << sizeof(c) << endl << sizeof(d) << endl;
+	return 0;
+}
+```
+
+
+
+```cpp
+#include <iostream>
+
+using namespace std;
+
+class A
+{
+public:
+	virtual void func() { cout << "A::func" << endl; }
+private:
+	int ma;
+};
+
+class B : virtual public A
+{
+public:
+	void func() { cout << "B::func" << endl; }
+private:
+	int mb;
+};
+
+int main()
+{
+	//基类指针指向派生类对象时,永远指向的是派生类基类部分数据的起始地址
+	A* p = new B();
+	p->func();
+	delete p;
+	return 0;
+}
+```
+
+运行时报错。p指向的是派生类基类部分数据的起始地址，但是应该从vbptr删除
+
+![](https://img1.imgtp.com/2022/11/14/mf1BYDw5.png)
+
+解决方法：不用堆，用栈。
+
+```cpp
+B b;
+A* p = &b;
+p->func();
+```
 
 
 
 ## 2. 菱形继承的问题
 
+**很少有多重继承。**
 
+采用虚继承解决菱形继承
+
+好处：
+
+1. 可以做更多代码的复用  
+2. D -> B, C    B *p = new D()  C *p = new D()  使用起来更灵活
+
+
+
+使 ma 在 D 里面只存在一份
+
+```cpp
+#include <iostream>
+
+using namespace std;
+
+class A
+{
+public:
+	A(int data) :ma(data) { cout << "A()" << endl; }
+	~A(){ cout << "~A()"<< endl;  }
+protected:
+	int ma;
+};
+
+class B : virtual public A  //virtual public
+{
+public:
+	B(int data) :A(data), mb(data) { cout << "B()" << endl; }
+	~B() { cout << "~B()" << endl; }
+protected:
+	int mb;
+};
+
+class C : virtual public A  //virtual public
+{
+public:
+	C(int data) :A(data), mc(data) { cout << "C()" << endl; }
+	~C() { cout << "~C()" << endl; }
+protected:
+	int mc;
+};
+
+class D : public B, public C
+{
+public:
+	D(int data) :A(data), B(data), C(data), md(data) { cout << "D()" << endl; } //A(data)
+	~D() { cout << "~D()" << endl; }
+protected:
+	int md;
+};
+
+int main()
+{
+	D d(10);
+	return 0;
+}
+```
 
 
 
 ## 3. C++的四种类型转换
 
+C++**语言级别**提供的四种类型转换方式
 
+const_cast : 去掉（指针或引用）常量属性的一个类型转换
+
+**static_cast** : 提供编译器认为安全的类型转换（没有任何**联系**的类型之间的转换就被否定了）。**编译时期**的类型转换
+
+reinterpret_cast : 类似于C风格的强制类型转换，谈不上安全
+
+dynamic_cast : 主要用在继承结构中，可以支持RTTI类型识别的上下转换。**运行时期**的类型转换
+
+ ```cpp
+ #include <iostream>
+ 
+ using namespace std;
+ 
+ //dynamic_cast
+ class Base
+ {
+ public:
+ 	virtual void func() = 0;
+ };
+ 
+ class Derive1 : public Base
+ {
+ public:
+ 	void func() { cout << "Derive1::func" << endl; }
+ };
+ 
+ class Derive2 : public Base
+ {
+ public:
+ 	void func() { cout << "Derive2::func" << endl; }
+ 	//Derive2实现新功能的API接口函数
+ 	void drive02func() { cout << "Derive2::drive02func" << endl; }
+ };
+ 
+ void showFunc(Base* p)
+ {
+ 	//dynamic_cast会检查p指针是否指向的是一个Derive2类型的对象
+ 	//p->vfptr->vftable RTTI信息,
+ 	//如果是,dynamic_cast转换类型成功,返回Derive2对象的地址
+ 	//否则返回nullptr
+ 	Derive2* pd2 = dynamic_cast<Derive2*>(p); //static_cast放这里不安全
+ 	if (pd2 != nullptr)
+ 	{
+ 		pd2->drive02func();
+ 	}
+ 	else 
+ 		p->func(); //动态绑定
+ }
+ 
+ int main()
+ {
+ 	Derive1 d1;
+ 	Derive2 d2;
+ 	showFunc(&d1);
+ 	showFunc(&d2);
+ 
+ 	//const int a = 10;
+ 	//int* p2 = const_cast<int*>(&a); //去掉常量属性的一个类型转换
+ 	//*p2 = 20;
+ 
+ 	//const_cast<这里面必须是指针或引用类型 如 int* int&>
+ 	//int b = const_cast<int>a; //error
+ 
+ 	//static_cast  
+ 	//int a = 97;
+ 	//char b = static_cast<char>(a);
+ 	//cout << b;
+ 
+ 	//reinterpret_cast C风格的强制转换
+ 	//int* p = nullptr;
+ 	//double* p2 = reinterpret_cast<double*>(p);
+ 	return 0;
+ }
+ ```
 
 
 
 # 第八章 STL 6大组件
 
-
-
-
-
 ## 1. 简介
 
+![1668446261783.png](https://img1.imgtp.com/2022/11/15/RxpZxgrL.png)
 
+![1668446205404.png](https://img1.imgtp.com/2022/11/15/Z6MyDUIZ.png)
 
 
 
 ## 2. vector
 
+ 扩容是两倍
 
+迭代器失效问题要注意
+
+```cpp
+vector<int>vec;
+vec.reserve(20); //只给容器底层开辟指定大小的空间，并不会添加新的元素
+cout << vec.size(); //0
+```
+
+resize()不仅给容器底层开辟指定大小的空间，还会添加新的元素
 
 
 
 ## 3. deque 容器和 list 容器
 
+deque 二维，一维按二倍扩容，扩容的放在中间（oldsize / 2 的地方开始放）。第二维大小为  4096/sizeof(T) 
 
+```
+底层数据结构：动态开辟的二维数组，一维数组从2开始，以2倍的方式进行扩容，
+每次扩容后，原来第二位的数组，从oldsize/2下标开始存放
+```
+
+
+
+list 双向循环列表
+
+头节点的前一个就是尾节点
 
 
 
 ## 4. vector、deque、list 对比
 
+deque底层内存是否是连续的？并不是。每一个第二维是连续的，但是第二维是动态new出来的
 
+vector 和 deque之间的区别？
+
+1. 底层数据结构
+2. 前中后插入删除元素的时间复杂度：deque前O(1) vector O(n)
+3. 对于内存的使用效率：vector 需要的内存空间必须是连续的；deque 可以分块进行数据存储。所以deque更高。
+4. 在中间进行insert或者erase，vector和deque它们的效率谁更好一点？vector更好挪动 
+
+
+
+vector 和 list 之间的区别？数组和链表
 
 
 
 ## 5. 容器适配器
 
+1. 适配器底层没有自己的数据结构，它是另外一个容器的封装，它的方法，全部由底层依赖的容器进行实现的。
+2. 没有实现自己的迭代器
 
+
+
+为什么stack和queue依赖deque；priority_queue依赖vector？
+
+1. vector的初始内存使用效率太低了，没有deque好
+2. 对于queue来说，需要尾部插入、头部删除。
+3. vector需要大片的连续内存，而deque只需要分段的内存。当存储大量的数据时，显然deque对于内存的利用率更好一些
+
+堆可以用数组实现
+
+```cpp
+template<typename T, typename Container=deque<T>>
+class Stack
+{
+public:
+	void push(const T& val) { con.push_back(val); }
+	void pop() { con.pop_back(); }
+	T top() const { return con.back(); }
+private:
+	Container con;
+};
+```
 
 
 
 ## 6. 无序关联容器
 
+要注意迭代器失效
 
+```cpp
+unordered_set<int>s;
+for (int i = 0; i < 20; i++) s.insert(rand() % 100);
+auto it = s.begin();
+while (it != s.end()) {
+    it = s.erase(it);
+}
+cout << s.size() << endl;
+```
 
 
 
 ## 7. 有序关联容器
 
+```cpp
+#include <iostream>
+#include <set>
+#include <map>
 
+using namespace std;
+
+class Student
+{
+public:
+	Student(int id, string name)
+		:_id(id), _name(name){}
+	bool operator<(const Student s) const //告诉编译器怎样排序
+	{
+		return _id < s._id;
+	}
+private:
+	int _id;
+	string _name;
+	friend ostream& operator<<(ostream& out, const Student& stu);
+};
+ostream& operator<<(ostream& out, const Student& stu)
+{
+	out << "id:" << stu._id << " name: " << stu._name;
+	return out;
+}
+int main()
+{
+	set<Student>s;
+	s.insert({ 1000, "Bob" });
+	s.insert({ 2000, "Sam" });
+	for (const auto& stu : s)
+	{
+		cout << stu << endl;
+	}
+	return 0;
+}
+```
+
+
+
+```cpp
+#include <iostream>
+#include <set>
+#include <map>
+
+using namespace std;
+
+class Student
+{
+public:
+	Student(int id = 0, string name = "")
+		:_id(id), _name(name){}
+private:
+	int _id;
+	string _name;
+	friend ostream& operator<<(ostream& out, const Student& stu);
+};
+ostream& operator<<(ostream& out, const Student& stu)
+{
+	out << "id:" << stu._id << " name: " << stu._name;
+	return out;
+}
+int main()
+{
+	map<int, Student> stuMap;
+	stuMap.insert({ 1000, Student(1000, "张三") });
+	stuMap.insert({ 1200, Student(2000, "李四") });
+	for (auto it = stuMap.begin(); it != stuMap.end(); ++it)
+	{
+		cout << it->first << " " << it->second << endl;
+	}
+	cout << stuMap[1200] << endl;
+	return 0;
+}
+```
 
 
 
 ## 8. 迭代器 iterator
 
+容器的嵌套类型
 
+常量类型：const_iterator
+
+反向迭代器：
+
+```cpp
+//rbegin()：返回的是最后一个元素的反向迭代器表示
+//rend()：返回的是首元素前驱位置的迭代其表示
+vector<int>::reverse_iterator rit = a.rbegin();
+for (; rit != a.rend(); ++rit)
+{
+    cout << *rit << ' ';
+}
+```
 
 
 
 ## 9. 函数对象
 
+```cpp
+#include <iostream>
 
+using namespace std;
+
+class Sum
+{
+public:
+	int operator()(int a, int b)
+	{
+		return a + b;
+	}
+};
+
+int main()
+{
+	Sum sum;
+	/*
+	把有operator()小括号运算符重载函数的对象,称作函数对象或者称作仿函数
+	*/
+	int ret = sum(10, 20); 
+	cout << ret;
+} 
+```
+
+
+
+```cpp
+#include <iostream>
+
+using namespace std;
+
+template<typename T>
+bool mygreater(T a, T b)
+{
+	return a > b;
+}
+
+template<typename T>
+bool myless(T a, T b)
+{
+	return a < b;
+}
+
+template<typename T, typename Compare>
+bool compare(T a, T b, Compare comp)
+{
+    //通过函数指针调用函数,是没有办法内联的,效率很低,因为有函数调用开销
+    //编译时无法知道调用哪个函数,没有办法内联
+	return comp(a, b);
+}
+
+int main()
+{
+	cout << compare(10, 20, mygreater<int>) << endl; //函数指针
+	cout << compare(10, 20, myless<int>) << endl;
+	return 0;
+}
+```
+
+解决方法：用函数对象代替函数指针。
+
+1. 通过函数对象调用operator()，可以省略函数的调用开销，比通过函数指针调用函数（不能够inline内联调用）效率高
+2. 对象，可以添加一些属性。 
+
+
+
+可以 ctrl 点开看定义。如以下修改成了从大到小
+
+```cpp
+set<int, greater<int>>s;
+```
 
 
 
 ## 10. 泛型函数和绑定器
+
+algorithm 里面的
+
+泛型算法 = template + 迭代器 + 函数对象
+
+1. 泛型算法的参数接收的都是迭代器
+2. 参数还可以接收函数对象（C函数指针）
+
+
+
+find_if 用条件进行查询
+
+```cpp
+#include<iostream>
+#include<algorithm>
+#include<vector>
+#include <functional> //函数对象和绑定器
+
+using namespace std;
+
+/*
+绑定器 + 二元函数对象 -》一元函数对象
+bind1st:把二元函数对象的operator()的第一个新参绑定起来
+bind2nd:把二元函数对象的operator()的第二个新参绑定起来
+*/
+
+int main()
+{
+	int arr[] = { 11,22,33,44,55 };
+	vector<int>vec(arr, arr + sizeof(arr) / sizeof(arr[0]));	
+	//find_if需要一元函数对象
+	auto it2 = find_if(vec.begin(), vec.end(),
+		//bind2nd(greater<int>(), 48)); //a > b 把b绑定成48
+		//bind1st(less<int>(), 48)); //a < b 把a绑定成48
+		[](int val)->bool {return val > 48; });
+	vec.insert(it2, 48);
+	for (int i : vec) cout << i << ' '; cout << endl;
+
+	for_each(vec.begin(), vec.end(), 
+		[](int val)->void
+		{
+			if (val % 2 == 0) {
+				cout << val << ' ';
+			}
+		});
+
+	return 0;
+}
+```
+
+
 
