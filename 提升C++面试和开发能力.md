@@ -2316,17 +2316,145 @@ int main()
 
 两者生产一个就消费一个，结束后互相通知对方。
 
+```cpp
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue> //STL所有容器都不是线程安全
+
+using namespace std;
+
+std::mutex mtx; //定义互斥锁, 线程间互斥
+std::condition_variable cv; //定义条件变量, 线程间通信
+
+class Queue
+{
+public:
+	void put(int val)
+	{
+		//lock_guard<std::mutex>guard(mtx);//error scoped_ptr 左值拷贝构造和赋值都delete了
+		unique_lock<std::mutex> lck(mtx); //防止这把锁被释放了
+		while (!que.empty())
+		{
+			cv.wait(lck); //线程进入等待, 并把mtx锁释放
+		}
+		que.push(val);
+		cv.notify_all(); //其他线程得到该通知,从等待变为阻塞,获取锁后继续执行
+		cout << "生产者 生产:" << val << " 号物品" << endl;
+	}
+	int get()
+	{
+		//lock_guard<std::mutex>guard(mtx);
+		unique_lock<std::mutex>lck(mtx);
+		while (que.empty())
+		{
+			cv.wait(lck);
+		}
+		int val = que.front();
+		que.pop();
+		cv.notify_all();
+		cout << "消费者 消费:" << val << "号物品" << endl;
+		return val;
+	}
+private:
+	queue<int> que;
+};
+
+void producer(Queue* que)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		que->put(i);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+}
+
+void consumer(Queue* que)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		que->get();
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+}
+
+int main()
+{
+	Queue que;
+
+	std::thread t1(producer, &que);
+	std::thread t2(consumer, &que);
+
+	t1.join();
+	t2.join();
+
+	return 0;
+}
+```
+
 
 
 ## 5. 再谈lock_guard和unique_lock
 
+**lock_guard 和 unique_lock** 
 
+**unique_lock**：不仅可以使用在简单的临界区代码段的互斥操作中，还能用在函数调用过程中
+
+**lock_guard**：不可能用在函数参数传递或者返回过程中，只能用在简单的临界区代码段的互斥操作中
+
+ 
+
+**condition_variable wait 和 notify_all 方法**
+
+**notify_all**：通知在 cv 上等待的线程，条件成立了，起来干活。其它 cv 上等待的线程收到通知，从等待态到阻塞态。
 
 
 
 ## 6. 基于CAS操作的atomic原子类型
 
+互斥锁比较重，临界区代码做的事情稍稍复杂时用。
 
+无锁队列
+
+```cpp
+#include <iostream>
+#include <mutex>
+#include <condition_variable>
+#include <atomic> //包含了很多原子类型
+#include <list>
+
+using namespace std;
+
+//volatile 防止多线程对共享变量进行缓存
+volatile std::atomic_bool isReady = true; 
+volatile std::atomic_int ccount = 0;
+//int ccount = 0;
+
+void task()
+{
+	while (!isReady)
+	{
+		std::this_thread::yield(); //线程出让当前的cpu时间片,等待下一次调度
+	}
+	for (int i = 0; i < 1000; i++)
+		ccount++;
+}
+
+int main()
+{
+	list<std::thread> tlist;
+	for (int i = 0; i < 10; i++) {
+		tlist.push_back(std::thread(task));
+	}
+	for (auto& t : tlist)
+	{
+		t.join();
+	}
+	cout << ccount << endl;
+	return 0;
+}
+```
 
 
 
@@ -2334,25 +2462,301 @@ int main()
 
 ## 1.单例模式代码设计
 
+单例模式：一个类不管创建多少次对象，永远只能得到该类型一个对象的实例。
 
+常用的：日志模块、数据库模块
+
+饿汉式单例模式：还没有获取实例对象，实例对象就已经产生了
+
+懒汉式单例模式：唯一的实例对象，直到第一次获取它的时候，才产生
+
+----------
+
+饿汉式一定是线程安全的；但是会延长软件的启动时间
+
+```cpp
+#include <iostream>
+
+class Singleton
+{
+public:
+	static Singleton* getInstance() //#3 获取类的唯一实例对象的接口方法
+	{
+		return &instance;
+	}
+private:
+	static Singleton instance; //#2 定义一个唯一的类的实例对象
+	Singleton() //#1 构造函数私有化
+	{
+
+	}
+	Singleton(const Singleton&) = delete; //#4 禁止深拷贝、运算符重载
+	Singleton& operator=(const Singleton&) = delete;
+};
+Singleton Singleton::instance;
+
+int main()
+{
+	Singleton* p1 = Singleton::getInstance();
+	Singleton* p2 = Singleton::getInstance();
+	Singleton* p3 = Singleton::getInstance();
+	return 0;
+}
+```
+
+懒汉式模式：变成指针。
+
+```cpp
+class Singleton
+{
+public:
+	static Singleton* getInstance() //#3 获取类的唯一实例对象的接口方法
+	{
+		if (nullptr == instance)
+		{
+			instance = new Singleton();
+		}
+		return instance;
+	}
+private:
+	static Singleton *instance; //#2 定义一个唯一的类的实例对象
+	Singleton() //#1 构造函数私有化
+	{
+
+	}
+	Singleton(const Singleton&) = delete; //#4 禁止深拷贝、运算符重载
+	Singleton& operator=(const Singleton&) = delete;
+};
+Singleton *Singleton::instance = nullptr;
+```
 
 
 
 ## 2. 线程安全的懒汉单例模式
 
+可重入：没有执行完又被调用一次
 
+开辟内存 => 构造对象、赋值（这两个不保证执行顺序）
+
+有可能出现线程 1 运行后还没来得及赋值线程 2 也进去了
+
+```cpp
+class Singleton
+{
+public:
+	static Singleton* getInstance() //#3 获取类的唯一实例对象的接口方法
+	{
+		if (nullptr == instance)
+		{
+			std::lock_guard<std::mutex> guard(mtx);
+			if (nullptr == instance)
+				instance = new Singleton();
+		}
+		return instance;
+	}
+private:
+	static Singleton* volatile instance; //#2 定义一个唯一的类的实例对象
+	Singleton() //#1 构造函数私有化
+	{
+
+	}
+	Singleton(const Singleton&) = delete; //#4 禁止深拷贝、运算符重载
+	Singleton& operator=(const Singleton&) = delete;
+};
+Singleton* volatile Singleton::instance = nullptr;
+```
+
+也可以用 static 实现
+
+```cpp
+class Singleton
+{
+public:
+	static Singleton* getInstance() 
+	{
+		// 函数静态局部变量的初始化,在汇编上已经自动添加线程互斥指令了
+		static Singleton instance; //运行到这里才会初始化
+		return &instance;
+	}
+private:
+	Singleton() 
+	{
+
+	}
+	Singleton(const Singleton&) = delete; 
+	Singleton& operator=(const Singleton&) = delete;
+};
+```
 
 
 
 ## 3. 简单工厂和工厂方法
 
+简单工厂，一个工厂把所有的产品都造，同时也不符合“开闭”原则
 
+```cpp
+#include <iostream>
+#include <memory>
+
+/*
+简单工厂 Simple Factory
+工厂方法 Factory Method
+抽象工厂 Abstract Factory
+
+工厂模式：主要是封装了对象的创建
+*/
+
+class Car
+{
+public:
+	Car(std::string name) : _name(name){}
+	virtual void show() = 0;
+protected:
+	std::string _name;
+};
+
+class Bmw : public Car
+{
+public:
+	Bmw(std::string name) : Car(name){}
+	void show()
+	{
+		std::cout << "获取了一辆宝马 " << _name << std::endl;
+	}
+};
+
+class Audi : public Car
+{
+public:
+	Audi(std::string name) : Car(name) {}
+	void show()
+	{
+		std::cout << "获取了一辆奥迪 " << _name << std::endl;
+	}
+};
+
+enum CarType
+{
+	BMW, AUDI
+};
+
+class SimpleFactory
+{
+public:
+	Car* createCar(CarType ct)
+	{
+		switch (ct)
+		{
+		case BMW:
+			return new Bmw("x1");
+			break;
+		case AUDI:
+			return new Audi("y1");
+			break;
+		default:
+			std::cerr << "传入工厂的参数不正确 " << ct << std::endl;
+			break;
+		}
+	}
+};
+
+int main()
+{
+	std::unique_ptr<SimpleFactory> factory(new SimpleFactory());
+	std::unique_ptr<Car>p1(factory->createCar(BMW));
+	std::unique_ptr<Car>p2 (factory->createCar(AUDI));
+	p1->show();
+	p2->show();
+
+	return 0;
+}
+```
+
+可以通过一个基类向外拓展。实现了修改关闭、拓展打开
+
+```cpp
+#include <iostream>
+#include <memory>
+
+/*
+简单工厂 Simple Factory
+工厂方法 Factory Method
+抽象工厂 Abstract Factory
+
+工厂模式：主要是封装了对象的创建
+*/
+
+class Car
+{
+public:
+	Car(std::string name) : _name(name){}
+	virtual void show() = 0;
+protected:
+	std::string _name;
+};
+
+class Bmw : public Car
+{
+public:
+	Bmw(std::string name) : Car(name){}
+	void show()
+	{
+		std::cout << "获取了一辆宝马 " << _name << std::endl;
+	}
+};
+
+class Audi : public Car
+{
+public:
+	Audi(std::string name) : Car(name) {}
+	void show()
+	{
+		std::cout << "获取了一辆奥迪 " << _name << std::endl;
+	}
+};
+
+class Factory
+{
+public:
+	virtual Car* createCar(std::string name) = 0;
+};
+
+class BMWFactory : public Factory
+{
+public:
+	Car* createCar(std::string name)
+	{
+		return new Bmw(name);
+	}
+};
+
+class AudiFactory : public Factory
+{
+public:
+	Car* createCar(std::string name)
+	{
+		return new Audi(name);
+	}
+};
+
+int main()
+{
+	std::unique_ptr<Factory> bmwFactory(new BMWFactory());
+	std::unique_ptr<Factory> audiFactory(new AudiFactory());
+	std::unique_ptr<Car>p1(bmwFactory->createCar("x1"));
+	std::unique_ptr<Car>p2(audiFactory->createCar("y1"));
+	p1->show();
+	p2->show();
+
+	return 0;
+}
+```
 
 
 
 ## 4. 抽象工厂
 
-
+现在考虑生产一类产品
 
 
 
