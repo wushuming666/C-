@@ -1,5 +1,3 @@
-![1668501969954.png](https://img1.imgtp.com/2022/11/15/TUpbVS7t.png)
-
 # 一、内容提纲
 
 ![1668501686946.png](https://img1.imgtp.com/2022/11/15/pH6JXPGx.png)
@@ -2758,72 +2756,696 @@ int main()
 
 现在考虑生产一类产品
 
+缺点：重写接口很麻烦
+
+```cpp
+#include <iostream>
+#include <memory>
+
+/*
+简单工厂 Simple Factory
+优：客户不用自己负责new对象
+缺：接口函数不闭合，不能对修改关闭
+
+工厂方法 Factory Method
+优：提供了一个纯虚函数（创建产品），定义派生类（具体产品的工厂）负责创建对应的产品，可以做到不同的产品在不同的工厂里面创建，能够对现有工厂以及产品的修改关闭。
+缺：很多产品是有关联关系的，属于一个产品簇，不应该放在不同的工厂里去创建，且工厂类太多，不好维护
+
+抽象工厂 Abstract Factory
+把有关联关系的，属于一个产品簇的所有产品创建的接口函数放在一个抽象工厂里面，派生类（具体产品的工厂）应该负责创建该产品簇里面所有的产品。
+
+工厂模式：主要是封装了对象的创建
+*/
+
+//系列产品1
+class Car
+{
+public:
+	Car(std::string name) : _name(name){}
+	virtual void show() = 0;
+protected:
+	std::string _name;
+};
+
+class Bmw : public Car
+{
+public:
+	Bmw(std::string name) : Car(name){}
+	void show()
+	{
+		std::cout << "获取了一辆宝马 " << _name << std::endl;
+	}
+};
+
+class Audi : public Car
+{
+public:
+	Audi(std::string name) : Car(name) {}
+	void show()
+	{
+		std::cout << "获取了一辆奥迪 " << _name << std::endl;
+	}
+};
+
+//系列产品2
+class Light
+{
+public:
+	virtual void show() = 0;
+};
+
+class BmwLight : public Light
+{
+public:
+	void show() { std::cout << "Bmw light" << std::endl; }
+};
+
+class AudiLight : public Light
+{
+public:
+	void show() { std::cout << "Audi light" << std::endl; }
+};
+
+//抽象成抽象工厂 => 对有一组关联关系的产品簇提供产品对象的统一创建
+class AbstractFactory
+{
+public:
+	virtual Car* createCar(std::string name) = 0; //工厂方法 创建汽车
+	virtual Light* createCarLight() = 0; //创建车灯
+};
+
+class BMWFactory : public AbstractFactory
+{
+public:
+	Car* createCar(std::string name)
+	{
+		return new Bmw(name);
+	}
+	Light* createCarLight()
+	{
+		return new BmwLight();
+	}
+};
+
+class AudiFactory : public AbstractFactory
+{
+public:
+	Car* createCar(std::string name)
+	{
+		return new Audi(name);
+	}
+	Light* createCarLight()
+	{
+		return new AudiLight();
+	}
+};
+
+int main()
+{
+	std::unique_ptr<AbstractFactory> bmwFactory(new BMWFactory());
+	std::unique_ptr<AbstractFactory> audiFactory(new AudiFactory());
+	std::unique_ptr<Car>p1(bmwFactory->createCar("x1"));
+	std::unique_ptr<Car>p2(audiFactory->createCar("y1"));
+	std::unique_ptr<Light>p3(bmwFactory->createCarLight());
+	std::unique_ptr<Light>p4(audiFactory->createCarLight());
+	p1->show();
+	p2->show();
+	p3->show();
+	p4->show();
+
+	return 0;
+}
+/*
+获取了一辆宝马 x1
+获取了一辆奥迪 y1
+Bmw light
+Audi light
+*/
+```
+
 
 
 ## 5. 代理模式
 
+```cpp
+#include <iostream>
+#include <memory>
 
+using namespace std;
+
+/*
+代理Proxy模式：通过代理类，来控制实际对象的访问权限
+客户     助理Proxy     老板 委托类
+*/
+class VideoSite
+{
+public:
+	virtual void freeMovie() = 0; //免费电影
+	virtual void vipMovie() = 0; //vip电影
+	virtual void ticketMovie() = 0; //券电影
+};
+class FixBugVideoSite : public VideoSite  //委托类
+{
+public:
+	virtual void freeMovie()  //免费电影
+	{
+		cout << "免费电影" << endl;
+	}
+	virtual void vipMovie()  //vip电影
+	{
+		cout << "vip电影" << endl;
+	}
+	virtual void ticketMovie()  //券电影
+	{
+		cout << "券电影" << endl;
+	}
+};
+
+class FreeVideoSitProxy : public VideoSite
+{
+public:
+	FreeVideoSitProxy(){ pVideo = new FixBugVideoSite(); }
+	~FreeVideoSitProxy() { delete pVideo; }
+	virtual void freeMovie() //免费电影
+	{
+		pVideo->freeMovie(); //通过代理对象的freeMovie，来访问真正委托类对象的freeMovie
+	}
+	virtual void vipMovie()//vip电影
+	{
+		cout << "请升级vip" << endl;
+	}
+	virtual void ticketMovie() //券电影
+	{
+		cout << "请充值" << endl;
+	}
+private:
+	VideoSite* pVideo;
+};
+
+class VipVideoSitProxy : public VideoSite
+{
+public:
+	VipVideoSitProxy() { pVideo = new FixBugVideoSite(); }
+	~VipVideoSitProxy() { delete pVideo; }
+	virtual void freeMovie() //免费电影
+	{
+		pVideo->freeMovie(); //通过代理对象的freeMovie，来访问真正委托类对象的freeMovie
+	}
+	virtual void vipMovie() //vip电影
+	{
+		pVideo->vipMovie();
+	}
+	virtual void ticketMovie()  //券电影
+	{
+		cout << "请充值" << endl;
+	}
+private:
+	VideoSite* pVideo;
+};
+
+void watchMovie(unique_ptr<VideoSite>& ptr)
+{
+	ptr->freeMovie();
+	ptr->vipMovie();
+	ptr->ticketMovie();
+}
+
+int main()
+{
+	unique_ptr<VideoSite> p1(new FreeVideoSitProxy());
+	unique_ptr<VideoSite> p2(new VipVideoSitProxy());
+
+	watchMovie(p1);
+	watchMovie(p2);
+
+	return 0;
+}
+/*
+免费电影
+请升级vip
+请充值
+免费电影
+vip电影
+请充值
+*/
+```
 
 
 
 ## 6. 装饰器模式
 
+```cpp
+#include <iostream>
+#include <memory>
 
+using namespace std;
+
+/*
+装饰器模式
+*/
+
+class Car  //抽象基类
+{
+public:
+	virtual void show() = 0;
+};
+//三个实体的汽车类
+class Bmw : public Car
+{
+public:
+	void show()
+	{ 
+		cout << "宝马,配置有：基类配置"; 
+	}
+};
+class Audi : public Car
+{
+public:
+	void show()
+	{
+		cout << "奥迪,配置有：基类配置" ;
+	}
+};
+class Benz : public Car
+{
+public:
+	void show()
+	{
+		cout << "奔驰,配置有：基类配置" ;
+	}
+};
+
+//装饰器 定速巡航
+class ConcreteDecorator01 : public Car
+{
+public:
+	ConcreteDecorator01(Car* p) :pCar(p) {}
+	void show()
+	{
+		pCar->show();
+		cout << ",定速巡航" ;
+	}
+private:
+	Car* pCar;
+};
+
+class ConcreteDecorator02 : public Car
+{
+public:
+	ConcreteDecorator02(Car* p) :pCar(p) {}
+	void show()
+	{
+		pCar->show();
+		cout << ",自动刹车";
+	}
+private:
+	Car* pCar;
+};
+
+class ConcreteDecorator03 : public Car
+{
+public:
+	ConcreteDecorator03(Car* p) :pCar(p) {}
+	void show()
+	{
+		pCar->show();
+		cout << ",车道偏离" ;
+	}
+private:
+	Car* pCar;
+};
+
+
+int main()
+{
+	Car* p1 = new ConcreteDecorator01(new Bmw());
+	p1 = new ConcreteDecorator02(p1);
+	p1 = new ConcreteDecorator03(p1);
+	Car* p2 = new ConcreteDecorator02(new Audi());
+	Car* p3 = new ConcreteDecorator03(new Benz());
+
+	p1->show();
+	cout << endl;
+	p2->show();
+	cout << endl;
+	p3->show();
+
+	return 0;
+}
+/*
+宝马,配置有：基类配置,定速巡航,自动刹车,车道偏离
+奥迪,配置有：基类配置,自动刹车
+奔驰,配置有：基类配置,车道偏离
+*/
+```
 
 
 
 ## 7. 适配器模式
 
+```cpp
+#include <iostream>
+#include <memory>
 
+using namespace std;
+
+/*
+适配器模式：让不兼容的接口可以在一起工作
+电脑 =》 投影到 =》 投影仪 
+*/
+class VGA //VGA接口类
+{
+public:
+	virtual void play() = 0;
+};
+
+//进了一批新的投影仪，但是新的投影仪只支持HDMI接口
+class HDMI
+{
+public:
+	virtual void play() = 0;
+};
+
+//TV01 表示支持VGA接口的投影仪
+class TV01 : public VGA
+{
+public:
+	void play()
+	{
+		cout << "通过VGA接口连接投影仪，进行视频播放" << endl;
+	}
+};
+
+//TV02 表示支持HDMI接口的投影仪
+class TV02 : public HDMI
+{
+public:
+	void play()
+	{
+		cout << "通过HDMI接口连接投影仪，进行视频播放" << endl;
+	}
+};
+
+//实现一个电脑类(只支持VGA接口)
+class Computer 
+{
+public:
+	//由于电脑只支持VGA接口，所以该方法的参数只支持VGA接口的指针/引用
+	void playVideo(VGA* pVGA) 
+	{
+		pVGA->play();
+	}
+};
+
+/*
+方法1：换一个支持HDMI接口的电脑，代码重构
+方法2：买一个转换头（适配器），把VGA信号转为HDMI信号，添加适配器类
+*/
+class VGAToHDMIAdpter : public VGA
+{
+public:
+	VGAToHDMIAdpter(HDMI* p) :pHdmi(p){}
+	void play() //转换头
+	{
+		pHdmi->play();
+	}
+private:
+	HDMI* pHdmi;
+};
+
+int main()
+{
+	Computer computer;
+	computer.playVideo(new TV01());
+	computer.playVideo(new VGAToHDMIAdpter(new TV02()));
+	return 0;
+}
+```
 
 
 
 ## 8. 观察者模式
 
+```cpp
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <list>
+
+using namespace std;
+
+/*
+行为形模式：主要关注的是对象之间的通信
+观察者-监听者模式（发布-订阅模式）设计模式：主要关注的是对象的一对多的关系，
+也就是多个对象都依赖一个对象，当该对象的状态发生改变时，其它对象都能接收到
+相应的通知
+
+一组数据（数据对象） => 通过这一组数据 => 曲线图/柱状图/圆饼图
+当数据对象改变时，对象1、对象2、对象3应该及时地收到相应的通知 
+*/
+
+//观察者抽象类
+class Observer 
+{
+public:
+	//处理消息的接口
+	virtual void handle(int msgid) = 0;
+};
+
+//第一个观察者实例 1 2
+class Observer1 : public Observer
+{
+public:
+	void handle(int msgid)
+	{
+		switch(msgid)
+		{
+		case 1:
+			cout << "Observer1 recv 1 msg!" << endl;
+			break;
+		case 2:
+			cout << "Observer1 recv 2 msg!" << endl;
+			break;
+		default:
+			cout << "Observer1 recv unknow msg!" << endl;
+			break;
+		}
+	}
+};
+
+//第二个观察者实例 2
+class Observer2 : public Observer
+{
+public:
+	void handle(int msgid)
+	{
+		switch (msgid)
+		{
+		case 2:
+			cout << "Observer2 recv 2 msg!" << endl;
+			break;
+		default:
+			cout << "Observer2 recv unknow msg!" << endl;
+			break;
+		}
+	}
+};
+
+//第三个观察者实例  1 3
+class Observer3 : public Observer
+{
+public:
+	void handle(int msgid)
+	{
+		switch (msgid)
+		{
+		case 1:
+			cout << "Observer3 recv 1 msg!" << endl;
+			break;
+		case 3:
+			cout << "Observer3 recv 3 msg!" << endl;
+			break;
+		default:
+			cout << "Observer3 recv unknow msg!" << endl;
+			break;
+		}
+	}
+};
+
+class Subject
+{
+public:
+	//给主题增加观察者对象
+	void addObserver(Observer* obser, int msgid) //观察者和它感兴趣的id
+	{
+		_subMap[msgid].push_back(obser);
+	}
+	//主题检测发生改变，通知相应的观察者对象处理事件
+	void dispatch(int msgid) 
+	{
+		auto it = _subMap.find(msgid);
+		if (it != _subMap.end())
+		{
+			for (auto tmp : it->second)
+			{
+				tmp->handle(msgid);
+			}
+		}
+	}
+private:
+	unordered_map<int, list<Observer*>> _subMap;
+};
+
+int main()
+{
+	Subject subject;
+	Observer* p1 = new Observer1();
+	Observer* p2 = new Observer2();
+	Observer* p3 = new Observer3();
+
+	subject.addObserver(p1, 1);
+	subject.addObserver(p1, 2);
+	subject.addObserver(p2, 2);
+	subject.addObserver(p3, 1);
+	subject.addObserver(p3, 3);
+
+	int msgid = 0;
+	for (;;)
+	{
+		cout << "输入消息id：";
+		cin >> msgid;
+		if (msgid == -1)
+			break;
+		subject.dispatch(msgid);
+	}
+	return 0;
+}
+/*
+输入消息id：1
+Observer1 recv 1 msg!
+Observer3 recv 1 msg!
+输入消息id：2
+Observer1 recv 2 msg!
+Observer2 recv 2 msg!
+输入消息id：3
+Observer3 recv 3 msg!
+输入消息id：4
+输入消息id：-1
+*/
+```
+
 
 
 # 七、C++代码应用实践
 
-## 1. dfs搜索迷宫路径
+## 1. dfs路径
 
-
-
-
+没有难度
 
 ## 2. bfs最短路径
 
-
-
-
+bfs 记录路径可以新开一个二维数组，每个地方记录前驱的下标
 
 ## 3. 大数的加减法
 
-
-
-
+模拟高精度
 
 ## 4. 海量数据查重问题解决方案汇总
 
+1. 哈希表
+2. 分治思想
+3. Bloom Filter：布隆过滤器
+4. 字符串类型：Trie树
 
+```
+/*
+#1 哈希表
+*/
+
+/*
+* # 2
+有一个文件 50亿个整数，内存限制400M，请你找出文件中重复的数和次数
+50亿 5G*4=20G  *2(哈希表地址索引) = 40G
+分治：大文件划分为小文件，把结果写入到一个存储重复元素的文件当中
+
+大文件划分为小文件的个数：40G/400M = 120个小文件
+data0.txt
+data1.txt
+...
+data126.txt
+
+遍历大文件的元素，把每一个元素根据哈希映射函数，放到对应序号的小文件当中
+data % 127 = file_index
+*/
+
+/* #3
+a,b 两个文件，里面都有10亿个整数，内存限制400M，求出a，b两个文件中
+重复的元素有哪些？
+10亿 -》1G*4
+把a和b两个大文件划分成个数相等的一系列（27个）小文件（分治）
+a0.txt a1.txt a2.txt ... a26.txt
+b0.txt b1.txt b2.txt ... b26.txt
+*/
+```
 
 
 
 ## 5. 海量数据求top k问题解决方案汇总
 
+1. 求最大的/最小的前 k 个元素
+2. 求最大的/最小的第 k 个元素
 
+解法一：大根堆/小根堆  如求前十大元素，维持一个大小为 10 的小根堆。
+
+解法二：快排分割函数
+
+
+
+有一个大文件，内存限制200M，求最大的前10个。
+
+分治思想。小文件，每个小文件前 10 个，合并起来就是结果了。
 
 
 
 ## 6. 海量数据查重和top k综合应用
 
+重复次数最多的前 10 个。
 
-
-# 八、C++历年校招面经题目讲解
-
-
-
-# 九、C++研发岗校招简历书写指导
+哈希表后堆
 
 
 
-# 十、C++11容器emplace方法原理剖析
+# 八、C++11容器emplace方法原理剖析
+
+对 push/insert 更新成了 emplace。传入参数时直接在容器的底层构造。
+
+vector 用下
+
+```cpp
+#include <iostream>
+#include <vector>
+
+using namespace std;
+
+class Test
+{
+public:
+	Test(int a) { cout << "Test(int)" << endl; }
+	Test(int a, int b) { cout << "Test(int, int)" << endl; }
+	Test(const Test&) { cout << "Test(const Test&)" << endl; }
+	Test(Test&&) { cout << "Test(Test&&)" << endl; }
+	~Test() { cout << "~Test()" << endl; }
+};
+
+int main()
+{
+	vector<Test> vec;
+	vec.reserve(100);
+	vec.push_back(10);
+	cout << "--------" << endl;
+	vec.emplace_back(10); //没有拷贝构造，直接在vec底层构造
+	cout << "--------" << endl;
+	return 0;
+}
+```
+
